@@ -1,131 +1,280 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>📚 StudyOcean Multi Uploader</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>StudyOcean — Multi Book Uploader</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    .upload-card {
-      background-color: #1f2937;
-      padding: 12px;
-      border-radius: 10px;
-      margin-top: 10px;
-      transition: 0.3s ease;
-    }
-    .upload-card.success { background-color: #065f46; }
-    .upload-card.error { background-color: #7f1d1d; }
-    .progress-bar {
-      height: 6px;
-      background-color: #22c55e;
-      width: 0%;
-      border-radius: 5px;
-      transition: width 0.3s ease;
-    }
+    body { background:#06121a; }
+    .card { background:#0f1724; border:1px solid rgba(255,255,255,0.03); }
+    .progress { height:8px; background:#0b1220; border-radius:8px; overflow:hidden; }
+    .bar { height:100%; width:0%; background:#10b981; transition: width .2s linear; }
   </style>
 </head>
-<body class="bg-gray-900 text-white flex justify-center items-center min-h-screen">
-  <div class="w-full max-w-3xl bg-gray-800 rounded-2xl p-6 shadow-lg">
-    <h1 class="text-2xl font-bold text-center text-green-400 mb-6">📚 StudyOcean Multi Uploader</h1>
-    <div class="mb-4">
-      <label class="block mb-2 text-sm text-gray-300">Select up to 7 PDF files</label>
-      <input id="bookFiles" type="file" multiple accept=".pdf" class="w-full p-2 bg-gray-700 rounded-lg" />
+<body class="min-h-screen flex items-start justify-center py-10 px-4 text-slate-100">
+  <div class="w-full max-w-4xl">
+    <div class="card rounded-2xl p-6 shadow-lg">
+      <h1 class="text-3xl font-extrabold text-center text-teal-300 mb-2">📚 Upload Books (Multi)</h1>
+      <p class="text-center text-slate-400 mb-6">Select up to <strong>7</strong> PDFs and provide title & author for each. Choose thumbnails separately for each book.</p>
+
+      <!-- Top controls -->
+      <div class="grid md:grid-cols-3 gap-4 mb-4">
+        <div>
+          <label class="block text-sm text-slate-300 mb-1">Select Book PDF files (max 7)</label>
+          <input id="inputPdfs" type="file" accept=".pdf" multiple class="w-full rounded p-2 bg-slate-800 text-slate-200" />
+        </div>
+
+        <div>
+          <label class="block text-sm text-slate-300 mb-1">Global Category</label>
+          <select id="category" class="w-full rounded p-2 bg-slate-800 text-slate-200">
+            <option value="Class 10">Class 10</option>
+            <option value="Class 11">Class 11</option>
+            <option value="Class 12">Class 12</option>
+            <option value="IIT">IIT</option>
+            <option value="NEET">NEET</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm text-slate-300 mb-1">Common Description (optional)</label>
+          <input id="commonDesc" type="text" placeholder="e.g. Uploaded via MultiUploader" class="w-full rounded p-2 bg-slate-800 text-slate-200" />
+        </div>
+      </div>
+
+      <!-- Cards container -->
+      <div id="cards" class="space-y-3 mb-4"></div>
+
+      <div class="flex gap-3">
+        <button id="buildBtn" class="flex-1 bg-emerald-500 hover:bg-emerald-600 py-3 rounded font-semibold">🧩 Prepare Upload</button>
+        <button id="uploadBtn" class="flex-1 bg-teal-600 hover:bg-teal-700 py-3 rounded font-semibold disabled:opacity-60" disabled>🚀 Start Upload</button>
+      </div>
+
+      <!-- results -->
+      <div id="results" class="mt-4 space-y-2"></div>
     </div>
-
-    <div class="mb-4">
-      <label class="block mb-2 text-sm text-gray-300">Select Thumbnail(s) (Optional)</label>
-      <input id="thumbFiles" type="file" multiple accept="image/*" class="w-full p-2 bg-gray-700 rounded-lg" />
-    </div>
-
-    <button id="uploadBtn" class="w-full p-3 bg-green-600 hover:bg-green-700 rounded-md font-semibold text-lg">
-      🚀 Start Upload
-    </button>
-
-    <div id="statusContainer" class="mt-6 space-y-2"></div>
   </div>
 
   <script>
-    const API_URL = "https://books-api-609df06a289e.herokuapp.com"; // ⚠️ Replace with your Flask domain when deployed
-    const uploadBtn = document.getElementById("uploadBtn");
-    const bookFiles = document.getElementById("bookFiles");
-    const thumbFiles = document.getElementById("thumbFiles");
-    const statusContainer = document.getElementById("statusContainer");
+    // ========== CONFIG ==========
+    const API_URL = "https://books-api-609df06a289e.herokuapp.com"; // <<-- REPLACE with your Flask /api/books URL
 
-    uploadBtn.addEventListener("click", async () => {
-      const pdfs = Array.from(bookFiles.files);
-      const thumbs = Array.from(thumbFiles.files);
+    // Max files allowed
+    const MAX_FILES = 7;
 
-      if (pdfs.length === 0) return alert("Please select at least one book!");
-      if (pdfs.length > 7) return alert("You can upload up to 7 books at once!");
+    // DOM
+    const inputPdfs = document.getElementById('inputPdfs');
+    const cards = document.getElementById('cards');
+    const buildBtn = document.getElementById('buildBtn');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const results = document.getElementById('results');
+    const categoryEl = document.getElementById('category');
+    const commonDesc = document.getElementById('commonDesc');
+
+    let selectedFiles = []; // File[] of PDFs
+    let cardData = []; // each item: {pdfFile, titleInput, authorInput, thumbInput, progressBar, statusEl}
+
+    inputPdfs.addEventListener('change', () => {
+      selectedFiles = Array.from(inputPdfs.files || []);
+      // auto-limit client-side
+      if (selectedFiles.length > MAX_FILES) {
+        alert("You selected more than " + MAX_FILES + " files. Only first " + MAX_FILES + " will be prepared.");
+        selectedFiles = selectedFiles.slice(0, MAX_FILES);
+        // reset file input to reflect trimmed list (can't programmatically set FileList), user should reselect if needed
+      }
+    });
+
+    // Build UI cards for each selected file
+    buildBtn.addEventListener('click', () => {
+      cards.innerHTML = "";
+      cardData = [];
+      results.innerHTML = "";
+
+      if (!selectedFiles || selectedFiles.length === 0) {
+        alert("Please choose at least one PDF file first.");
+        return;
+      }
+
+      if (selectedFiles.length > MAX_FILES) {
+        alert("Max " + MAX_FILES + " files allowed.");
+        return;
+      }
+
+      selectedFiles.forEach((pdfFile, idx) => {
+        const idxLabel = idx + 1;
+        const card = document.createElement('div');
+        card.className = "p-4 rounded-md border border-slate-700 bg-slate-900";
+
+        // inner HTML
+        card.innerHTML = `
+          <div class="flex justify-between items-start gap-2">
+            <div>
+              <div class="text-sm text-slate-300">Book ${idxLabel}</div>
+              <div class="font-semibold mt-1">${escapeHtml(pdfFile.name)}</div>
+              <div class="text-xs text-slate-400 mt-1">Size: ${(pdfFile.size/1024/1024).toFixed(2)} MB</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-slate-400">Required: Thumbnail</div>
+              <input data-idx="${idx}" type="file" accept="image/*" class="thumbInput mt-2 text-xs" />
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-2 mt-3">
+            <input class="titleInput p-2 rounded bg-slate-800 text-slate-200" placeholder="Title (edit if needed)" value="${escapeHtml(pdfFile.name.replace(/\.pdf$/i,''))}" />
+            <input class="authorInput p-2 rounded bg-slate-800 text-slate-200" placeholder="Author (edit if needed)" value="StudyOcean" />
+          </div>
+
+          <div class="mt-3">
+            <label class="text-xs text-slate-400">Description (optional)</label>
+            <input class="descInput p-2 rounded w-full bg-slate-800 text-slate-200" placeholder="Optional description" value="${escapeHtml(commonDesc.value || '')}" />
+          </div>
+
+          <div class="mt-3 progress">
+            <div class="bar"></div>
+          </div>
+
+          <div class="mt-2 flex items-center justify-between">
+            <div class="text-sm text-yellow-400 status">⏳ Ready</div>
+            <div class="text-xs text-slate-400">Book ${idxLabel} status</div>
+          </div>
+        `;
+
+        // append
+        cards.appendChild(card);
+
+        // store references
+        const titleInput = card.querySelector('.titleInput');
+        const authorInput = card.querySelector('.authorInput');
+        const descInput = card.querySelector('.descInput');
+        const thumbInput = card.querySelector('.thumbInput');
+        const progressBar = card.querySelector('.bar');
+        const statusEl = card.querySelector('.status');
+
+        cardData.push({
+          pdfFile,
+          titleInput,
+          authorInput,
+          descInput,
+          thumbInput,
+          progressBar,
+          statusEl
+        });
+      });
+
+      if (cardData.length > 0) {
+        uploadBtn.disabled = false;
+      } else {
+        uploadBtn.disabled = true;
+      }
+      // Scroll to cards
+      cards.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+
+    // Upload all in parallel
+    uploadBtn.addEventListener('click', async () => {
+      results.innerHTML = "";
+      if (cardData.length === 0) { alert("No prepared books. Click Prepare Upload first."); return; }
+
+      // Validate each card: thumbnail must be present
+      for (let i = 0; i < cardData.length; i++) {
+        const {thumbInput, titleInput, authorInput} = cardData[i];
+        if (!thumbInput.files || thumbInput.files.length === 0) {
+          return alert("Thumbnail missing for Book " + (i+1) + ". Please choose a thumbnail for each book.");
+        }
+        if (!titleInput.value || titleInput.value.trim().length === 0) {
+          return alert("Title missing for Book " + (i+1) + ". Please provide a title.");
+        }
+        if (!authorInput.value || authorInput.value.trim().length === 0) {
+          return alert("Author missing for Book " + (i+1) + ". Please provide an author.");
+        }
+      }
 
       uploadBtn.disabled = true;
+      buildBtn.disabled = true;
       uploadBtn.textContent = "⏳ Uploading...";
-      statusContainer.innerHTML = "";
 
-      const uploads = pdfs.map((pdf, i) => uploadSingleBook(pdf, thumbs[i] || thumbs[0]));
-      await Promise.all(uploads);
+      // start all uploads in parallel
+      const promises = cardData.map((c, i) => {
+        const data = new FormData();
+        data.append('title', c.titleInput.value.trim());
+        data.append('author', c.authorInput.value.trim());
+        data.append('category', categoryEl.value);
+        data.append('description', c.descInput.value.trim() || commonDesc.value || 'Uploaded via MultiUploader');
+        data.append('book_file', c.pdfFile);
+        data.append('thumbnail', c.thumbInput.files[0]);
+
+        // return promise that resolves with result object
+        return uploadWithProgress(API_URL, data, (percent) => {
+          c.progressBar.style.width = percent + '%';
+          c.statusEl.textContent = `⏳ ${percent}%`;
+        }).then((respText) => {
+          c.statusEl.textContent = "✅ Uploaded";
+          c.statusEl.classList.remove('text-yellow-400');
+          c.statusEl.classList.add('text-green-300');
+          return { success: true, idx: i, file: c.pdfFile.name, response: respText };
+        }).catch((err) => {
+          c.statusEl.textContent = "❌ Failed";
+          c.statusEl.classList.remove('text-yellow-400');
+          c.statusEl.classList.add('text-red-400');
+          return { success: false, idx: i, file: c.pdfFile.name, error: err };
+        });
+      });
+
+      const resultsArr = await Promise.all(promises);
+
+      // Show summary lines
+      results.innerHTML = '';
+      resultsArr.forEach((r) => {
+        const line = document.createElement('div');
+        line.className = "p-2 rounded bg-slate-900 border border-slate-800 text-sm flex justify-between items-center";
+        line.innerHTML = `
+          <div><b>${escapeHtml(r.file)}</b></div>
+          <div>${r.success ? '✅ Uploaded' : '❌ Failed'}</div>
+        `;
+        results.appendChild(line);
+      });
 
       uploadBtn.disabled = false;
+      buildBtn.disabled = false;
       uploadBtn.textContent = "🚀 Start Upload";
     });
 
-    async function uploadSingleBook(pdf, thumb) {
-      const card = document.createElement("div");
-      card.className = "upload-card";
-      card.innerHTML = `
-        <div class="flex justify-between">
-          <span>📖 ${pdf.name}</span>
-          <span class="status text-yellow-400">⏳ Uploading...</span>
-        </div>
-        <div class="mt-2 bg-gray-600 h-2 rounded-lg overflow-hidden">
-          <div class="progress-bar"></div>
-        </div>
-      `;
-      statusContainer.appendChild(card);
-      const bar = card.querySelector(".progress-bar");
-      const status = card.querySelector(".status");
-
-      const formData = new FormData();
-      formData.append("title", pdf.name.replace(".pdf", ""));
-      formData.append("author", "Uploader");
-      formData.append("category", "General");
-      formData.append("description", "Uploaded via MultiUploader");
-      formData.append("book_file", pdf);
-      if (thumb) formData.append("thumbnail", thumb);
-
-      try {
-        await uploadWithProgress(API_URL, formData, (percent) => {
-          bar.style.width = percent + "%";
-        });
-
-        card.classList.add("success");
-        status.textContent = "✅ Uploaded!";
-        status.classList.replace("text-yellow-400", "text-green-400");
-      } catch (err) {
-        card.classList.add("error");
-        status.textContent = "❌ Failed!";
-        status.classList.replace("text-yellow-400", "text-red-400");
-        console.error("Upload failed:", err);
-      }
-    }
-
+    // Helper: upload with progress using XHR, returns Promise
     function uploadWithProgress(url, formData, onProgress) {
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", url, true);
+        xhr.open('POST', url, true);
+
+        // if your backend needs CORS credentials or auth, add headers here
+
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             const percent = Math.round((e.loaded / e.total) * 100);
             onProgress(percent);
           }
         };
+
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText);
-          else reject(xhr.statusText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(xhr.responseText);
+          } else {
+            reject(`HTTP ${xhr.status}: ${xhr.responseText || xhr.statusText}`);
+          }
         };
-        xhr.onerror = () => reject("Network Error");
+        xhr.onerror = () => reject('Network error');
         xhr.send(formData);
       });
+    }
+
+    // small helper to escape HTML for safe insertion
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
     }
   </script>
 </body>
