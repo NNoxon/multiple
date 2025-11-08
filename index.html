@@ -3,279 +3,288 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>StudyOcean — Multi Book Uploader</title>
+  <title>StudyOcean — Manual Multi Uploader</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { background:#06121a; }
+    body { background:#071023; color:#e6eef6; font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial; }
     .card { background:#0f1724; border:1px solid rgba(255,255,255,0.03); }
     .progress { height:8px; background:#0b1220; border-radius:8px; overflow:hidden; }
     .bar { height:100%; width:0%; background:#10b981; transition: width .2s linear; }
+    .muted { color:#94a3b8; }
+    .small { font-size:0.85rem; }
+    .btn { cursor:pointer; }
   </style>
 </head>
-<body class="min-h-screen flex items-start justify-center py-10 px-4 text-slate-100">
+<body class="min-h-screen flex items-start justify-center py-10 px-4">
   <div class="w-full max-w-4xl">
     <div class="card rounded-2xl p-6 shadow-lg">
-      <h1 class="text-3xl font-extrabold text-center text-teal-300 mb-2">📚 Upload Books (Multi)</h1>
-      <p class="text-center text-slate-400 mb-6">Select up to <strong>7</strong> PDFs and provide title & author for each. Choose thumbnails separately for each book.</p>
+      <h1 class="text-2xl font-bold text-center text-teal-300 mb-2">📚 Manual Multi-Book Uploader</h1>
+      <p class="text-center muted mb-4 small">Add up to <strong>7</strong> books. Fill Title, Author, Category, Description, choose PDF & Thumbnail for each, then upload all at once.</p>
 
-      <!-- Top controls -->
-      <div class="grid md:grid-cols-3 gap-4 mb-4">
+      <div class="mb-4 grid gap-3 md:grid-cols-3">
         <div>
-          <label class="block text-sm text-slate-300 mb-1">Select Book PDF files (max 7)</label>
-          <input id="inputPdfs" type="file" accept=".pdf" multiple class="w-full rounded p-2 bg-slate-800 text-slate-200" />
-        </div>
-
-        <div>
-          <label class="block text-sm text-slate-300 mb-1">Global Category</label>
-          <select id="category" class="w-full rounded p-2 bg-slate-800 text-slate-200">
-            <option value="Class 10">Class 10</option>
-            <option value="Class 11">Class 11</option>
-            <option value="Class 12">Class 12</option>
-            <option value="IIT">IIT</option>
-            <option value="NEET">NEET</option>
+          <label class="small muted">Global Category (default for new items)</label>
+          <select id="globalCategory" class="w-full p-2 rounded bg-slate-800 text-slate-100">
+            <option>Class 10</option>
+            <option>Class 11</option>
+            <option>Class 12</option>
+            <option>IIT</option>
+            <option>NEET</option>
           </select>
         </div>
-
         <div>
-          <label class="block text-sm text-slate-300 mb-1">Common Description (optional)</label>
-          <input id="commonDesc" type="text" placeholder="e.g. Uploaded via MultiUploader" class="w-full rounded p-2 bg-slate-800 text-slate-200" />
+          <label class="small muted">Common Description (optional)</label>
+          <input id="globalDesc" class="w-full p-2 rounded bg-slate-800 text-slate-100" placeholder="Optional common description"/>
+        </div>
+        <div class="flex items-end gap-2">
+          <button id="addBtn" class="btn w-full bg-emerald-500 hover:bg-emerald-600 p-2 rounded font-semibold">➕ Add Book</button>
+          <button id="clearBtn" class="btn w-full bg-rose-600 hover:bg-rose-700 p-2 rounded font-semibold">🗑 Clear All</button>
         </div>
       </div>
 
-      <!-- Cards container -->
-      <div id="cards" class="space-y-3 mb-4"></div>
+      <div id="list" class="space-y-3 mb-4"></div>
 
       <div class="flex gap-3">
-        <button id="buildBtn" class="flex-1 bg-emerald-500 hover:bg-emerald-600 py-3 rounded font-semibold">🧩 Prepare Upload</button>
-        <button id="uploadBtn" class="flex-1 bg-teal-600 hover:bg-teal-700 py-3 rounded font-semibold disabled:opacity-60" disabled>🚀 Start Upload</button>
+        <button id="uploadAll" class="btn flex-1 bg-teal-600 hover:bg-teal-700 p-3 rounded font-semibold disabled:opacity-60" disabled>🚀 Upload All</button>
+        <button id="resetBtn" class="btn flex-1 bg-sky-600 hover:bg-sky-700 p-3 rounded font-semibold">↺ Reset</button>
       </div>
 
-      <!-- results -->
-      <div id="results" class="mt-4 space-y-2"></div>
+      <div id="summary" class="mt-4 space-y-2"></div>
     </div>
   </div>
 
   <script>
-    // ========== CONFIG ==========
-    const API_URL ="https://new-m97f.onrender.com/api/books";// <<-- REPLACE with your Flask /api/books URL
-
-    // Max files allowed
-    const MAX_FILES = 7;
+    // ----------------- CONFIG -----------------
+    const API_URL = "https://new-m97f.onrender.com/api/books"; // <--- your render API (already set)
+    const MAX_ITEMS = 7;
 
     // DOM
-    const inputPdfs = document.getElementById('inputPdfs');
-    const cards = document.getElementById('cards');
-    const buildBtn = document.getElementById('buildBtn');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const results = document.getElementById('results');
-    const categoryEl = document.getElementById('category');
-    const commonDesc = document.getElementById('commonDesc');
+    const listEl = document.getElementById('list');
+    const addBtn = document.getElementById('addBtn');
+    const uploadAllBtn = document.getElementById('uploadAll');
+    const resetBtn = document.getElementById('resetBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const globalCategory = document.getElementById('globalCategory');
+    const globalDesc = document.getElementById('globalDesc');
+    const summaryEl = document.getElementById('summary');
 
-    let selectedFiles = []; // File[] of PDFs
-    let cardData = []; // each item: {pdfFile, titleInput, authorInput, thumbInput, progressBar, statusEl}
+    let items = []; // each: {id, container, inputs...}
 
-    inputPdfs.addEventListener('change', () => {
-      selectedFiles = Array.from(inputPdfs.files || []);
-      // auto-limit client-side
-      if (selectedFiles.length > MAX_FILES) {
-        alert("You selected more than " + MAX_FILES + " files. Only first " + MAX_FILES + " will be prepared.");
-        selectedFiles = selectedFiles.slice(0, MAX_FILES);
-        // reset file input to reflect trimmed list (can't programmatically set FileList), user should reselect if needed
-      }
-    });
+    // helper to create element with classes
+    function el(tag, cls, html) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (html !== undefined) e.innerHTML = html;
+      return e;
+    }
 
-    // Build UI cards for each selected file
-    buildBtn.addEventListener('click', () => {
-      cards.innerHTML = "";
-      cardData = [];
-      results.innerHTML = "";
+    function createItem() {
+      if (items.length >= MAX_ITEMS) { alert("Max " + MAX_ITEMS + " books allowed."); return; }
+      const id = Date.now() + Math.random().toString(36).slice(2,7);
+      const idx = items.length + 1;
 
-      if (!selectedFiles || selectedFiles.length === 0) {
-        alert("Please choose at least one PDF file first.");
-        return;
-      }
-
-      if (selectedFiles.length > MAX_FILES) {
-        alert("Max " + MAX_FILES + " files allowed.");
-        return;
-      }
-
-      selectedFiles.forEach((pdfFile, idx) => {
-        const idxLabel = idx + 1;
-        const card = document.createElement('div');
-        card.className = "p-4 rounded-md border border-slate-700 bg-slate-900";
-
-        // inner HTML
-        card.innerHTML = `
-          <div class="flex justify-between items-start gap-2">
-            <div>
-              <div class="text-sm text-slate-300">Book ${idxLabel}</div>
-              <div class="font-semibold mt-1">${escapeHtml(pdfFile.name)}</div>
-              <div class="text-xs text-slate-400 mt-1">Size: ${(pdfFile.size/1024/1024).toFixed(2)} MB</div>
-            </div>
-            <div class="text-right">
-              <div class="text-xs text-slate-400">Required: Thumbnail</div>
-              <input data-idx="${idx}" type="file" accept="image/*" class="thumbInput mt-2 text-xs" />
-            </div>
+      const container = el('div', 'p-4 rounded-md border border-slate-700 bg-slate-900');
+      container.innerHTML = `
+        <div class="flex justify-between items-start gap-3">
+          <div>
+            <div class="text-sm muted">Book ${idx}</div>
+            <div class="font-semibold mt-1 titleFilename small"></div>
+            <div class="text-xs muted mt-1 sizeInfo"></div>
           </div>
-
-          <div class="grid md:grid-cols-2 gap-2 mt-3">
-            <input class="titleInput p-2 rounded bg-slate-800 text-slate-200" placeholder="Title (edit if needed)" value="${escapeHtml(pdfFile.name.replace(/\.pdf$/i,''))}" />
-            <input class="authorInput p-2 rounded bg-slate-800 text-slate-200" placeholder="Author (edit if needed)" value="StudyOcean" />
+          <div class="text-right">
+            <button class="removeBtn btn text-xs bg-rose-500 hover:bg-rose-600 p-1 rounded small">Remove</button>
           </div>
+        </div>
 
-          <div class="mt-3">
-            <label class="text-xs text-slate-400">Description (optional)</label>
-            <input class="descInput p-2 rounded w-full bg-slate-800 text-slate-200" placeholder="Optional description" value="${escapeHtml(commonDesc.value || '')}" />
+        <div class="grid md:grid-cols-2 gap-2 mt-3">
+          <input placeholder="Title" class="titleInput p-2 rounded bg-slate-800 text-slate-100" />
+          <input placeholder="Author" class="authorInput p-2 rounded bg-slate-800 text-slate-100" value="StudyOcean" />
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-2 mt-2">
+          <select class="categoryInput p-2 rounded bg-slate-800 text-slate-100">
+            <option>Class 10</option><option>Class 11</option><option>Class 12</option><option>IIT</option><option>NEET</option>
+          </select>
+          <input placeholder="Description (optional)" class="descInput p-2 rounded bg-slate-800 text-slate-100" />
+        </div>
+
+        <div class="mt-3 grid md:grid-cols-2 gap-2">
+          <div>
+            <label class="small muted">Choose PDF</label>
+            <input type="file" accept=".pdf" class="pdfInput mt-1 w-full" />
           </div>
-
-          <div class="mt-3 progress">
-            <div class="bar"></div>
+          <div>
+            <label class="small muted">Choose Thumbnail</label>
+            <input type="file" accept="image/*" class="thumbInput mt-1 w-full" />
           </div>
+        </div>
 
-          <div class="mt-2 flex items-center justify-between">
-            <div class="text-sm text-yellow-400 status">⏳ Ready</div>
-            <div class="text-xs text-slate-400">Book ${idxLabel} status</div>
-          </div>
-        `;
+        <div class="mt-3 progress">
+          <div class="bar"></div>
+        </div>
 
-        // append
-        cards.appendChild(card);
+        <div class="mt-2 flex items-center justify-between">
+          <div class="status small muted">⏳ Waiting</div>
+          <div class="result small muted">Status</div>
+        </div>
+      `;
 
-        // store references
-        const titleInput = card.querySelector('.titleInput');
-        const authorInput = card.querySelector('.authorInput');
-        const descInput = card.querySelector('.descInput');
-        const thumbInput = card.querySelector('.thumbInput');
-        const progressBar = card.querySelector('.bar');
-        const statusEl = card.querySelector('.status');
+      // attach
+      listEl.appendChild(container);
 
-        cardData.push({
-          pdfFile,
-          titleInput,
-          authorInput,
-          descInput,
-          thumbInput,
-          progressBar,
-          statusEl
-        });
+      // refs
+      const titleFilename = container.querySelector('.titleFilename');
+      const sizeInfo = container.querySelector('.sizeInfo');
+      const titleInput = container.querySelector('.titleInput');
+      const authorInput = container.querySelector('.authorInput');
+      const categoryInput = container.querySelector('.categoryInput');
+      const descInput = container.querySelector('.descInput');
+      const pdfInput = container.querySelector('.pdfInput');
+      const thumbInput = container.querySelector('.thumbInput');
+      const bar = container.querySelector('.bar');
+      const status = container.querySelector('.status');
+      const result = container.querySelector('.result');
+      const removeBtn = container.querySelector('.removeBtn');
+
+      // defaults
+      categoryInput.value = globalCategory.value;
+      descInput.value = globalDesc.value || '';
+
+      // events
+      pdfInput.addEventListener('change', () => {
+        const f = pdfInput.files[0];
+        if (f) {
+          titleFilename.textContent = f.name.replace(/\.pdf$/i,'');
+          sizeInfo.textContent = (f.size/1024/1024).toFixed(2) + ' MB';
+          // prefill title if empty
+          if (!titleInput.value) titleInput.value = f.name.replace(/\.pdf$/i,'');
+        } else {
+          titleFilename.textContent = '';
+          sizeInfo.textContent = '';
+        }
       });
 
-      if (cardData.length > 0) {
-        uploadBtn.disabled = false;
-      } else {
-        uploadBtn.disabled = true;
-      }
-      // Scroll to cards
-      cards.scrollIntoView({behavior:'smooth', block:'start'});
-    });
-
-    // Upload all in parallel
-    uploadBtn.addEventListener('click', async () => {
-      results.innerHTML = "";
-      if (cardData.length === 0) { alert("No prepared books. Click Prepare Upload first."); return; }
-
-      // Validate each card: thumbnail must be present
-      for (let i = 0; i < cardData.length; i++) {
-        const {thumbInput, titleInput, authorInput} = cardData[i];
-        if (!thumbInput.files || thumbInput.files.length === 0) {
-          return alert("Thumbnail missing for Book " + (i+1) + ". Please choose a thumbnail for each book.");
-        }
-        if (!titleInput.value || titleInput.value.trim().length === 0) {
-          return alert("Title missing for Book " + (i+1) + ". Please provide a title.");
-        }
-        if (!authorInput.value || authorInput.value.trim().length === 0) {
-          return alert("Author missing for Book " + (i+1) + ". Please provide an author.");
-        }
-      }
-
-      uploadBtn.disabled = true;
-      buildBtn.disabled = true;
-      uploadBtn.textContent = "⏳ Uploading...";
-
-      // start all uploads in parallel
-      const promises = cardData.map((c, i) => {
-        const data = new FormData();
-        data.append('title', c.titleInput.value.trim());
-        data.append('author', c.authorInput.value.trim());
-        data.append('category', categoryEl.value);
-        data.append('description', c.descInput.value.trim() || commonDesc.value || 'Uploaded via MultiUploader');
-        data.append('book_file', c.pdfFile);
-        data.append('thumbnail', c.thumbInput.files[0]);
-
-        // return promise that resolves with result object
-        return uploadWithProgress(API_URL, data, (percent) => {
-          c.progressBar.style.width = percent + '%';
-          c.statusEl.textContent = `⏳ ${percent}%`;
-        }).then((respText) => {
-          c.statusEl.textContent = "✅ Uploaded";
-          c.statusEl.classList.remove('text-yellow-400');
-          c.statusEl.classList.add('text-green-300');
-          return { success: true, idx: i, file: c.pdfFile.name, response: respText };
-        }).catch((err) => {
-          c.statusEl.textContent = "❌ Failed";
-          c.statusEl.classList.remove('text-yellow-400');
-          c.statusEl.classList.add('text-red-400');
-          return { success: false, idx: i, file: c.pdfFile.name, error: err };
-        });
+      removeBtn.addEventListener('click', () => {
+        listEl.removeChild(container);
+        items = items.filter(x => x.id !== id);
+        refreshIndices();
+        if (items.length === 0) uploadAllBtn.disabled = true;
       });
 
-      const resultsArr = await Promise.all(promises);
+      const itemObj = { id, container, titleInput, authorInput, categoryInput, descInput, pdfInput, thumbInput, bar, status, result };
+      items.push(itemObj);
+      uploadAllBtn.disabled = false;
+      refreshIndices();
+    }
 
-      // Show summary lines
-      results.innerHTML = '';
-      resultsArr.forEach((r) => {
-        const line = document.createElement('div');
-        line.className = "p-2 rounded bg-slate-900 border border-slate-800 text-sm flex justify-between items-center";
-        line.innerHTML = `
-          <div><b>${escapeHtml(r.file)}</b></div>
-          <div>${r.success ? '✅ Uploaded' : '❌ Failed'}</div>
-        `;
-        results.appendChild(line);
+    function refreshIndices(){
+      items.forEach((it, i) => {
+        const titleFilename = it.container.querySelector('.titleFilename');
+        const smallLabel = it.container.querySelector('.muted');
+        // update Book numbering
+        const bookNumEl = it.container.querySelector('.text-sm');
+        if(bookNumEl) bookNumEl.textContent = 'Book ' + (i+1);
       });
+    }
 
-      uploadBtn.disabled = false;
-      buildBtn.disabled = false;
-      uploadBtn.textContent = "🚀 Start Upload";
+    // add initial two items
+    createItem();
+    createItem();
+
+    addBtn.addEventListener('click', createItem);
+    clearBtn.addEventListener('click', () => {
+      if(!confirm('Clear all entries?')) return;
+      items.forEach(it => listEl.removeChild(it.container));
+      items = [];
+      uploadAllBtn.disabled = true;
     });
 
-    // Helper: upload with progress using XHR, returns Promise
-    function uploadWithProgress(url, formData, onProgress) {
-      return new Promise((resolve, reject) => {
+    resetBtn.addEventListener('click', () => {
+      location.reload();
+    });
+
+    // ---------- Upload logic ----------
+    uploadAllBtn.addEventListener('click', async () => {
+      if (items.length === 0) return alert("No books to upload.");
+
+      // validate all
+      for (let i=0;i<items.length;i++){
+        const it = items[i];
+        if (!it.pdfInput.files[0]) { alert("PDF missing for Book " + (i+1)); return; }
+        if (!it.thumbInput.files[0]) { alert("Thumbnail missing for Book " + (i+1)); return; }
+        if (!it.titleInput.value.trim()) { alert("Title missing for Book " + (i+1)); return; }
+        if (!it.authorInput.value.trim()) { alert("Author missing for Book " + (i+1)); return; }
+      }
+
+      uploadAllBtn.disabled = true;
+      addBtn.disabled = true;
+      summaryEl.innerHTML = '';
+      const uploads = items.map((it, idx) => uploadSingle(it, idx));
+      const results = await Promise.all(uploads);
+
+      // show summary
+      summaryEl.innerHTML = '';
+      results.forEach(r => {
+        const line = el('div', 'p-2 rounded bg-slate-900 border border-slate-800 flex justify-between items-center small', `
+          <div>${escapeHtml(r.file)}</div>
+          <div>${r.ok ? '✅ Uploaded' : '❌ Failed'}</div>
+        `);
+        summaryEl.appendChild(line);
+      });
+
+      uploadAllBtn.disabled = false;
+      addBtn.disabled = false;
+    });
+
+    function uploadSingle(it, idx) {
+      return new Promise((resolve) => {
+        const form = new FormData();
+        form.append('title', it.titleInput.value.trim());
+        form.append('author', it.authorInput.value.trim());
+        form.append('category', it.categoryInput.value);
+        form.append('description', it.descInput.value.trim() || globalDesc.value || 'Uploaded via MultiUploader');
+        form.append('book_file', it.pdfInput.files[0]);
+        form.append('thumbnail', it.thumbInput.files[0]);
+
+        // XHR for progress
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', url, true);
-
-        // if your backend needs CORS credentials or auth, add headers here
+        xhr.open('POST', API_URL, true);
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
-            onProgress(percent);
+            const pct = Math.round((e.loaded / e.total) * 100);
+            it.bar.style.width = pct + '%';
+            it.status.textContent = `⏳ ${pct}%`;
           }
         };
 
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(xhr.responseText);
+          if (xhr.status >=200 && xhr.status < 300) {
+            it.bar.style.width = '100%';
+            it.status.textContent = '✅ Uploaded';
+            it.status.classList.remove('muted');
+            it.result.textContent = 'Uploaded';
+            it.result.classList.remove('muted');
+            resolve({ ok:true, file: it.pdfInput.files[0].name });
           } else {
-            reject(`HTTP ${xhr.status}: ${xhr.responseText || xhr.statusText}`);
+            it.status.textContent = '❌ Failed';
+            it.result.textContent = 'Failed';
+            resolve({ ok:false, file: it.pdfInput.files[0].name });
           }
         };
-        xhr.onerror = () => reject('Network error');
-        xhr.send(formData);
+
+        xhr.onerror = () => {
+          it.status.textContent = '⚠️ Error';
+          it.result.textContent = 'Error';
+          resolve({ ok:false, file: it.pdfInput.files[0].name });
+        };
+
+        xhr.send(form);
       });
     }
 
-    // small helper to escape HTML for safe insertion
-    function escapeHtml(str) {
-      if (!str) return '';
-      return String(str)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#039;');
-    }
+    // small helper
+    function escapeHtml(s){ if(!s) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;"); }
   </script>
 </body>
 </html>
