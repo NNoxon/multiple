@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>📚 StudyOcean Multi Uploader</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .upload-card {
+      background-color: #1f2937;
+      padding: 12px;
+      border-radius: 10px;
+      margin-top: 10px;
+      transition: 0.3s ease;
+    }
+    .upload-card.success { background-color: #065f46; }
+    .upload-card.error { background-color: #7f1d1d; }
+    .progress-bar {
+      height: 6px;
+      background-color: #22c55e;
+      width: 0%;
+      border-radius: 5px;
+      transition: width 0.3s ease;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-white flex justify-center items-center min-h-screen">
+  <div class="w-full max-w-3xl bg-gray-800 rounded-2xl p-6 shadow-lg">
+    <h1 class="text-2xl font-bold text-center text-green-400 mb-6">📚 StudyOcean Multi Uploader</h1>
+    <div class="mb-4">
+      <label class="block mb-2 text-sm text-gray-300">Select up to 7 PDF files</label>
+      <input id="bookFiles" type="file" multiple accept=".pdf" class="w-full p-2 bg-gray-700 rounded-lg" />
+    </div>
+
+    <div class="mb-4">
+      <label class="block mb-2 text-sm text-gray-300">Select Thumbnail(s) (Optional)</label>
+      <input id="thumbFiles" type="file" multiple accept="image/*" class="w-full p-2 bg-gray-700 rounded-lg" />
+    </div>
+
+    <button id="uploadBtn" class="w-full p-3 bg-green-600 hover:bg-green-700 rounded-md font-semibold text-lg">
+      🚀 Start Upload
+    </button>
+
+    <div id="statusContainer" class="mt-6 space-y-2"></div>
+  </div>
+
+  <script>
+    const API_URL = "http://127.0.0.1:10000/api/books"; // ⚠️ Replace with your Flask domain when deployed
+    const uploadBtn = document.getElementById("uploadBtn");
+    const bookFiles = document.getElementById("bookFiles");
+    const thumbFiles = document.getElementById("thumbFiles");
+    const statusContainer = document.getElementById("statusContainer");
+
+    uploadBtn.addEventListener("click", async () => {
+      const pdfs = Array.from(bookFiles.files);
+      const thumbs = Array.from(thumbFiles.files);
+
+      if (pdfs.length === 0) return alert("Please select at least one book!");
+      if (pdfs.length > 7) return alert("You can upload up to 7 books at once!");
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = "⏳ Uploading...";
+      statusContainer.innerHTML = "";
+
+      const uploads = pdfs.map((pdf, i) => uploadSingleBook(pdf, thumbs[i] || thumbs[0]));
+      await Promise.all(uploads);
+
+      uploadBtn.disabled = false;
+      uploadBtn.textContent = "🚀 Start Upload";
+    });
+
+    async function uploadSingleBook(pdf, thumb) {
+      const card = document.createElement("div");
+      card.className = "upload-card";
+      card.innerHTML = `
+        <div class="flex justify-between">
+          <span>📖 ${pdf.name}</span>
+          <span class="status text-yellow-400">⏳ Uploading...</span>
+        </div>
+        <div class="mt-2 bg-gray-600 h-2 rounded-lg overflow-hidden">
+          <div class="progress-bar"></div>
+        </div>
+      `;
+      statusContainer.appendChild(card);
+      const bar = card.querySelector(".progress-bar");
+      const status = card.querySelector(".status");
+
+      const formData = new FormData();
+      formData.append("title", pdf.name.replace(".pdf", ""));
+      formData.append("author", "Uploader");
+      formData.append("category", "General");
+      formData.append("description", "Uploaded via MultiUploader");
+      formData.append("book_file", pdf);
+      if (thumb) formData.append("thumbnail", thumb);
+
+      try {
+        await uploadWithProgress(API_URL, formData, (percent) => {
+          bar.style.width = percent + "%";
+        });
+
+        card.classList.add("success");
+        status.textContent = "✅ Uploaded!";
+        status.classList.replace("text-yellow-400", "text-green-400");
+      } catch (err) {
+        card.classList.add("error");
+        status.textContent = "❌ Failed!";
+        status.classList.replace("text-yellow-400", "text-red-400");
+        console.error("Upload failed:", err);
+      }
+    }
+
+    function uploadWithProgress(url, formData, onProgress) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", url, true);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            onProgress(percent);
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText);
+          else reject(xhr.statusText);
+        };
+        xhr.onerror = () => reject("Network Error");
+        xhr.send(formData);
+      });
+    }
+  </script>
+</body>
+</html>
