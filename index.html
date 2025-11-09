@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>StudyOcean — Safe Sequential Uploader</title>
+  <title>StudyOcean — Safe Sequential Uploader (Auto Title)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background:#071023; color:#e6eef6; font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial; }
@@ -19,7 +19,7 @@
   <div class="w-full max-w-4xl">
     <div class="card rounded-2xl p-6 shadow-lg">
       <h1 class="text-2xl font-bold text-center text-teal-300 mb-2">📚 Manual Sequential Book Uploader</h1>
-      <p class="text-center muted mb-4 small">Add up to 7 books and upload one by one safely (Render memory-safe).</p>
+      <p class="text-center muted mb-4 small">Add up to 7 books — each with Title, Author, Category, Description, PDF & Thumbnail (Auto title from filename).</p>
 
       <div class="grid gap-3 md:grid-cols-3 mb-4">
         <div>
@@ -80,8 +80,14 @@
           <input placeholder="Description (optional)" class="descInput p-2 rounded bg-slate-800 text-slate-100" />
         </div>
         <div class="mt-2 grid md:grid-cols-2 gap-2">
-          <div><label class="small muted">PDF</label><input type="file" accept=".pdf" class="pdfInput mt-1 w-full"/></div>
-          <div><label class="small muted">Thumbnail</label><input type="file" accept="image/*" class="thumbInput mt-1 w-full"/></div>
+          <div>
+            <label class="small muted">PDF</label>
+            <input type="file" accept=".pdf" class="pdfInput mt-1 w-full"/>
+          </div>
+          <div>
+            <label class="small muted">Thumbnail</label>
+            <input type="file" accept="image/*" class="thumbInput mt-1 w-full"/>
+          </div>
         </div>
         <div class="mt-3 progress"><div class="bar"></div></div>
         <div class="mt-1 flex justify-between small"><span class="status muted">⏳ Waiting</span><span class="result muted"></span></div>
@@ -97,8 +103,19 @@
       const status=container.querySelector(".status");
       const result=container.querySelector(".result");
       const removeBtn=container.querySelector(".removeBtn");
+
+      // defaults
       categoryInput.value=globalCategory.value;
       descInput.value=globalDesc.value||"";
+
+      // auto-fill title from filename
+      pdfInput.addEventListener("change",()=>{
+        const f=pdfInput.files[0];
+        if(f && !titleInput.value.trim()){
+          titleInput.value=f.name.replace(/\.pdf$/i,'').replace(/[_-]/g,' ');
+        }
+      });
+
       removeBtn.onclick=()=>{listEl.removeChild(container);items=items.filter(x=>x.id!==id);refresh();};
       items.push({id,container,titleInput,authorInput,categoryInput,descInput,pdfInput,thumbInput,bar,status,result});
       uploadAllBtn.disabled=false;
@@ -133,11 +150,12 @@
     function uploadSingle(it,index){
       return new Promise((resolve)=>{
         const form=new FormData();
-        if(!it.pdfInput.files[0]||!it.thumbInput.files[0]||!it.titleInput.value.trim()||!it.authorInput.value.trim()){
-          it.status.textContent='⚠️ Missing fields';resolve(false);return;
+        if(!it.pdfInput.files[0]||!it.thumbInput.files[0]){
+          it.status.textContent='⚠️ Missing files';resolve(false);return;
         }
-        form.append('title',it.titleInput.value.trim());
-        form.append('author',it.authorInput.value.trim());
+        const titleVal = it.titleInput.value.trim() || it.pdfInput.files[0].name.replace(/\.pdf$/i,'').replace(/[_-]/g,' ');
+        form.append('title',titleVal);
+        form.append('author',it.authorInput.value.trim()||'Unknown');
         form.append('category',it.categoryInput.value);
         form.append('description',it.descInput.value.trim()||globalDesc.value||'Uploaded via SafeUploader');
         form.append('book_file',it.pdfInput.files[0]);
