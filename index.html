@@ -3,33 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>StudyOcean — Manual Multi Uploader</title>
+  <title>StudyOcean — Safe Sequential Uploader</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background:#071023; color:#e6eef6; font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial; }
     .card { background:#0f1724; border:1px solid rgba(255,255,255,0.03); }
     .progress { height:8px; background:#0b1220; border-radius:8px; overflow:hidden; }
     .bar { height:100%; width:0%; background:#10b981; transition: width .2s linear; }
-    .muted { color:#94a3b8; }
     .small { font-size:0.85rem; }
+    .muted { color:#94a3b8; }
     .btn { cursor:pointer; }
   </style>
 </head>
 <body class="min-h-screen flex items-start justify-center py-10 px-4">
   <div class="w-full max-w-4xl">
     <div class="card rounded-2xl p-6 shadow-lg">
-      <h1 class="text-2xl font-bold text-center text-teal-300 mb-2">📚 Manual Multi-Book Uploader</h1>
-      <p class="text-center muted mb-4 small">Add up to <strong>7</strong> books. Fill Title, Author, Category, Description, choose PDF & Thumbnail for each, then upload all at once.</p>
+      <h1 class="text-2xl font-bold text-center text-teal-300 mb-2">📚 Manual Sequential Book Uploader</h1>
+      <p class="text-center muted mb-4 small">Add up to 7 books and upload one by one safely (Render memory-safe).</p>
 
-      <div class="mb-4 grid gap-3 md:grid-cols-3">
+      <div class="grid gap-3 md:grid-cols-3 mb-4">
         <div>
-          <label class="small muted">Global Category (default for new items)</label>
+          <label class="small muted">Default Category</label>
           <select id="globalCategory" class="w-full p-2 rounded bg-slate-800 text-slate-100">
-            <option>Class 10</option>
-            <option>Class 11</option>
-            <option>Class 12</option>
-            <option>IIT</option>
-            <option>NEET</option>
+            <option>Class 10</option><option>Class 11</option><option>Class 12</option><option>IIT</option><option>NEET</option>
           </select>
         </div>
         <div>
@@ -38,253 +34,144 @@
         </div>
         <div class="flex items-end gap-2">
           <button id="addBtn" class="btn w-full bg-emerald-500 hover:bg-emerald-600 p-2 rounded font-semibold">➕ Add Book</button>
-          <button id="clearBtn" class="btn w-full bg-rose-600 hover:bg-rose-700 p-2 rounded font-semibold">🗑 Clear All</button>
+          <button id="clearBtn" class="btn w-full bg-rose-600 hover:bg-rose-700 p-2 rounded font-semibold">🗑 Clear</button>
         </div>
       </div>
 
       <div id="list" class="space-y-3 mb-4"></div>
 
-      <div class="flex gap-3">
-        <button id="uploadAll" class="btn flex-1 bg-teal-600 hover:bg-teal-700 p-3 rounded font-semibold disabled:opacity-60" disabled>🚀 Upload All</button>
-        <button id="resetBtn" class="btn flex-1 bg-sky-600 hover:bg-sky-700 p-3 rounded font-semibold">↺ Reset</button>
-      </div>
+      <button id="uploadAll" class="btn w-full bg-teal-600 hover:bg-teal-700 p-3 rounded font-semibold disabled:opacity-60" disabled>🚀 Upload Sequentially</button>
 
       <div id="summary" class="mt-4 space-y-2"></div>
     </div>
   </div>
 
   <script>
-    // ----------------- CONFIG -----------------
-    const API_URL = "https://new-m97f.onrender.com/api/books"; // <--- your render API (already set)
+    const API_URL = "https://new-m97f.onrender.com/api/books";
     const MAX_ITEMS = 7;
+    const listEl = document.getElementById("list");
+    const addBtn = document.getElementById("addBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const uploadAllBtn = document.getElementById("uploadAll");
+    const globalCategory = document.getElementById("globalCategory");
+    const globalDesc = document.getElementById("globalDesc");
+    const summaryEl = document.getElementById("summary");
+    let items = [];
 
-    // DOM
-    const listEl = document.getElementById('list');
-    const addBtn = document.getElementById('addBtn');
-    const uploadAllBtn = document.getElementById('uploadAll');
-    const resetBtn = document.getElementById('resetBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const globalCategory = document.getElementById('globalCategory');
-    const globalDesc = document.getElementById('globalDesc');
-    const summaryEl = document.getElementById('summary');
+    function el(tag, cls, html){const e=document.createElement(tag);if(cls)e.className=cls;if(html)e.innerHTML=html;return e;}
 
-    let items = []; // each: {id, container, inputs...}
-
-    // helper to create element with classes
-    function el(tag, cls, html) {
-      const e = document.createElement(tag);
-      if (cls) e.className = cls;
-      if (html !== undefined) e.innerHTML = html;
-      return e;
-    }
-
-    function createItem() {
-      if (items.length >= MAX_ITEMS) { alert("Max " + MAX_ITEMS + " books allowed."); return; }
-      const id = Date.now() + Math.random().toString(36).slice(2,7);
-      const idx = items.length + 1;
-
-      const container = el('div', 'p-4 rounded-md border border-slate-700 bg-slate-900');
-      container.innerHTML = `
-        <div class="flex justify-between items-start gap-3">
-          <div>
-            <div class="text-sm muted">Book ${idx}</div>
-            <div class="font-semibold mt-1 titleFilename small"></div>
-            <div class="text-xs muted mt-1 sizeInfo"></div>
-          </div>
-          <div class="text-right">
-            <button class="removeBtn btn text-xs bg-rose-500 hover:bg-rose-600 p-1 rounded small">Remove</button>
-          </div>
+    function createItem(){
+      if(items.length>=MAX_ITEMS){alert("Max "+MAX_ITEMS+" books allowed.");return;}
+      const id=Date.now()+Math.random().toString(36).slice(2,7);
+      const container=el("div","p-4 rounded-md border border-slate-700 bg-slate-900");
+      container.innerHTML=`
+        <div class="flex justify-between items-start">
+          <div class="text-sm muted">Book ${items.length+1}</div>
+          <button class="removeBtn btn text-xs bg-rose-500 hover:bg-rose-600 p-1 rounded small">Remove</button>
         </div>
-
-        <div class="grid md:grid-cols-2 gap-2 mt-3">
+        <div class="grid md:grid-cols-2 gap-2 mt-2">
           <input placeholder="Title" class="titleInput p-2 rounded bg-slate-800 text-slate-100" />
           <input placeholder="Author" class="authorInput p-2 rounded bg-slate-800 text-slate-100" value="StudyOcean" />
         </div>
-
         <div class="grid md:grid-cols-2 gap-2 mt-2">
           <select class="categoryInput p-2 rounded bg-slate-800 text-slate-100">
             <option>Class 10</option><option>Class 11</option><option>Class 12</option><option>IIT</option><option>NEET</option>
           </select>
           <input placeholder="Description (optional)" class="descInput p-2 rounded bg-slate-800 text-slate-100" />
         </div>
-
-        <div class="mt-3 grid md:grid-cols-2 gap-2">
-          <div>
-            <label class="small muted">Choose PDF</label>
-            <input type="file" accept=".pdf" class="pdfInput mt-1 w-full" />
-          </div>
-          <div>
-            <label class="small muted">Choose Thumbnail</label>
-            <input type="file" accept="image/*" class="thumbInput mt-1 w-full" />
-          </div>
+        <div class="mt-2 grid md:grid-cols-2 gap-2">
+          <div><label class="small muted">PDF</label><input type="file" accept=".pdf" class="pdfInput mt-1 w-full"/></div>
+          <div><label class="small muted">Thumbnail</label><input type="file" accept="image/*" class="thumbInput mt-1 w-full"/></div>
         </div>
-
-        <div class="mt-3 progress">
-          <div class="bar"></div>
-        </div>
-
-        <div class="mt-2 flex items-center justify-between">
-          <div class="status small muted">⏳ Waiting</div>
-          <div class="result small muted">Status</div>
-        </div>
+        <div class="mt-3 progress"><div class="bar"></div></div>
+        <div class="mt-1 flex justify-between small"><span class="status muted">⏳ Waiting</span><span class="result muted"></span></div>
       `;
-
-      // attach
       listEl.appendChild(container);
-
-      // refs
-      const titleFilename = container.querySelector('.titleFilename');
-      const sizeInfo = container.querySelector('.sizeInfo');
-      const titleInput = container.querySelector('.titleInput');
-      const authorInput = container.querySelector('.authorInput');
-      const categoryInput = container.querySelector('.categoryInput');
-      const descInput = container.querySelector('.descInput');
-      const pdfInput = container.querySelector('.pdfInput');
-      const thumbInput = container.querySelector('.thumbInput');
-      const bar = container.querySelector('.bar');
-      const status = container.querySelector('.status');
-      const result = container.querySelector('.result');
-      const removeBtn = container.querySelector('.removeBtn');
-
-      // defaults
-      categoryInput.value = globalCategory.value;
-      descInput.value = globalDesc.value || '';
-
-      // events
-      pdfInput.addEventListener('change', () => {
-        const f = pdfInput.files[0];
-        if (f) {
-          titleFilename.textContent = f.name.replace(/\.pdf$/i,'');
-          sizeInfo.textContent = (f.size/1024/1024).toFixed(2) + ' MB';
-          // prefill title if empty
-          if (!titleInput.value) titleInput.value = f.name.replace(/\.pdf$/i,'');
-        } else {
-          titleFilename.textContent = '';
-          sizeInfo.textContent = '';
-        }
-      });
-
-      removeBtn.addEventListener('click', () => {
-        listEl.removeChild(container);
-        items = items.filter(x => x.id !== id);
-        refreshIndices();
-        if (items.length === 0) uploadAllBtn.disabled = true;
-      });
-
-      const itemObj = { id, container, titleInput, authorInput, categoryInput, descInput, pdfInput, thumbInput, bar, status, result };
-      items.push(itemObj);
-      uploadAllBtn.disabled = false;
-      refreshIndices();
+      const titleInput=container.querySelector(".titleInput");
+      const authorInput=container.querySelector(".authorInput");
+      const categoryInput=container.querySelector(".categoryInput");
+      const descInput=container.querySelector(".descInput");
+      const pdfInput=container.querySelector(".pdfInput");
+      const thumbInput=container.querySelector(".thumbInput");
+      const bar=container.querySelector(".bar");
+      const status=container.querySelector(".status");
+      const result=container.querySelector(".result");
+      const removeBtn=container.querySelector(".removeBtn");
+      categoryInput.value=globalCategory.value;
+      descInput.value=globalDesc.value||"";
+      removeBtn.onclick=()=>{listEl.removeChild(container);items=items.filter(x=>x.id!==id);refresh();};
+      items.push({id,container,titleInput,authorInput,categoryInput,descInput,pdfInput,thumbInput,bar,status,result});
+      uploadAllBtn.disabled=false;
+      refresh();
     }
 
-    function refreshIndices(){
-      items.forEach((it, i) => {
-        const titleFilename = it.container.querySelector('.titleFilename');
-        const smallLabel = it.container.querySelector('.muted');
-        // update Book numbering
-        const bookNumEl = it.container.querySelector('.text-sm');
-        if(bookNumEl) bookNumEl.textContent = 'Book ' + (i+1);
-      });
+    function refresh(){
+      items.forEach((it,i)=>{it.container.querySelector(".muted").textContent="Book "+(i+1);});
+      if(items.length===0)uploadAllBtn.disabled=true;
     }
 
-    // add initial two items
-    createItem();
-    createItem();
+    addBtn.onclick=createItem;
+    clearBtn.onclick=()=>{if(confirm("Clear all?")){listEl.innerHTML="";items=[];uploadAllBtn.disabled=true;}};
 
-    addBtn.addEventListener('click', createItem);
-    clearBtn.addEventListener('click', () => {
-      if(!confirm('Clear all entries?')) return;
-      items.forEach(it => listEl.removeChild(it.container));
-      items = [];
-      uploadAllBtn.disabled = true;
-    });
-
-    resetBtn.addEventListener('click', () => {
-      location.reload();
-    });
-
-    // ---------- Upload logic ----------
-    uploadAllBtn.addEventListener('click', async () => {
-      if (items.length === 0) return alert("No books to upload.");
-
-      // validate all
-      for (let i=0;i<items.length;i++){
-        const it = items[i];
-        if (!it.pdfInput.files[0]) { alert("PDF missing for Book " + (i+1)); return; }
-        if (!it.thumbInput.files[0]) { alert("Thumbnail missing for Book " + (i+1)); return; }
-        if (!it.titleInput.value.trim()) { alert("Title missing for Book " + (i+1)); return; }
-        if (!it.authorInput.value.trim()) { alert("Author missing for Book " + (i+1)); return; }
-      }
-
-      uploadAllBtn.disabled = true;
-      addBtn.disabled = true;
-      summaryEl.innerHTML = '';
-      const uploads = items.map((it, idx) => uploadSingle(it, idx));
-      const results = await Promise.all(uploads);
-
-      // show summary
-      summaryEl.innerHTML = '';
-      results.forEach(r => {
-        const line = el('div', 'p-2 rounded bg-slate-900 border border-slate-800 flex justify-between items-center small', `
-          <div>${escapeHtml(r.file)}</div>
-          <div>${r.ok ? '✅ Uploaded' : '❌ Failed'}</div>
+    // Sequential upload
+    uploadAllBtn.onclick=async()=>{
+      if(items.length===0)return;
+      uploadAllBtn.disabled=true;addBtn.disabled=true;clearBtn.disabled=true;
+      summaryEl.innerHTML='';
+      for(let i=0;i<items.length;i++){
+        const it=items[i];
+        const ok=await uploadSingle(it,i);
+        const line=el('div','p-2 rounded bg-slate-900 border border-slate-800 flex justify-between items-center small',`
+          <div>${it.titleInput.value||it.pdfInput.files[0]?.name||'Book '+(i+1)}</div>
+          <div>${ok?'✅ Uploaded':'❌ Failed'}</div>
         `);
         summaryEl.appendChild(line);
-      });
+      }
+      uploadAllBtn.disabled=false;addBtn.disabled=false;clearBtn.disabled=false;
+    };
 
-      uploadAllBtn.disabled = false;
-      addBtn.disabled = false;
-    });
+    function uploadSingle(it,index){
+      return new Promise((resolve)=>{
+        const form=new FormData();
+        if(!it.pdfInput.files[0]||!it.thumbInput.files[0]||!it.titleInput.value.trim()||!it.authorInput.value.trim()){
+          it.status.textContent='⚠️ Missing fields';resolve(false);return;
+        }
+        form.append('title',it.titleInput.value.trim());
+        form.append('author',it.authorInput.value.trim());
+        form.append('category',it.categoryInput.value);
+        form.append('description',it.descInput.value.trim()||globalDesc.value||'Uploaded via SafeUploader');
+        form.append('book_file',it.pdfInput.files[0]);
+        form.append('thumbnail',it.thumbInput.files[0]);
 
-    function uploadSingle(it, idx) {
-      return new Promise((resolve) => {
-        const form = new FormData();
-        form.append('title', it.titleInput.value.trim());
-        form.append('author', it.authorInput.value.trim());
-        form.append('category', it.categoryInput.value);
-        form.append('description', it.descInput.value.trim() || globalDesc.value || 'Uploaded via MultiUploader');
-        form.append('book_file', it.pdfInput.files[0]);
-        form.append('thumbnail', it.thumbInput.files[0]);
-
-        // XHR for progress
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', API_URL, true);
-
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const pct = Math.round((e.loaded / e.total) * 100);
-            it.bar.style.width = pct + '%';
-            it.status.textContent = `⏳ ${pct}%`;
+        const xhr=new XMLHttpRequest();
+        xhr.open('POST',API_URL,true);
+        xhr.upload.onprogress=(e)=>{
+          if(e.lengthComputable){
+            const pct=Math.round((e.loaded/e.total)*100);
+            it.bar.style.width=pct+'%';
+            it.status.textContent=`⏳ ${pct}%`;
           }
         };
-
-        xhr.onload = () => {
-          if (xhr.status >=200 && xhr.status < 300) {
-            it.bar.style.width = '100%';
-            it.status.textContent = '✅ Uploaded';
-            it.status.classList.remove('muted');
-            it.result.textContent = 'Uploaded';
-            it.result.classList.remove('muted');
-            resolve({ ok:true, file: it.pdfInput.files[0].name });
-          } else {
-            it.status.textContent = '❌ Failed';
-            it.result.textContent = 'Failed';
-            resolve({ ok:false, file: it.pdfInput.files[0].name });
+        xhr.onload=()=>{
+          if(xhr.status>=200&&xhr.status<300){
+            it.bar.style.width='100%';
+            it.status.textContent='✅ Uploaded';
+            it.result.textContent='OK';
+            resolve(true);
+          }else{
+            it.status.textContent='❌ Failed';
+            it.result.textContent='Err';
+            resolve(false);
           }
         };
-
-        xhr.onerror = () => {
-          it.status.textContent = '⚠️ Error';
-          it.result.textContent = 'Error';
-          resolve({ ok:false, file: it.pdfInput.files[0].name });
+        xhr.onerror=()=>{
+          it.status.textContent='⚠️ Error';
+          it.result.textContent='Err';
+          resolve(false);
         };
-
         xhr.send(form);
       });
     }
-
-    // small helper
-    function escapeHtml(s){ if(!s) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;"); }
   </script>
 </body>
 </html>
